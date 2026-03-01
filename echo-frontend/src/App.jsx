@@ -39,11 +39,132 @@ function b64ToFloat32(b64) {
   return float;
 }
 
+// ── Document Upload Panel Component ──────────────────────────────────────────
+function DocumentPanel({ userId, sessionId, onAnalysis }) {
+  const [uploading, setUploading] = useState(false);
+  const [documents, setDocuments] = useState([]);
+  const [dragOver, setDragOver] = useState(false);
+
+  const uploadFile = async (file) => {
+    if (!file) return;
+    setUploading(true);
+
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("user_id", userId);
+    formData.append("session_id", sessionId);
+
+    try {
+      const res = await fetch("http://localhost:8000/documents/upload", {
+        method: "POST",
+        body: formData,
+      });
+      const data = await res.json();
+
+      if (res.ok) {
+        setDocuments((prev) => [...prev, data]);
+        onAnalysis(data); // pass analysis up to parent for voice response
+      } else {
+        alert(`Upload failed: ${data.detail}`);
+      }
+    } catch (e) {
+      alert(`Upload error: ${e.message}`);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setDragOver(false);
+    uploadFile(e.dataTransfer.files[0]);
+  };
+
+  return (
+    <div className="w-full">
+      <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-3">
+        Upload Documents
+      </h2>
+
+      {/* Drop zone */}
+      <label
+        className={`
+          flex flex-col items-center justify-center w-full h-28 rounded-xl border-2
+          border-dashed cursor-pointer transition-all
+          ${
+            dragOver
+              ? "border-blue-400 bg-blue-950"
+              : "border-slate-600 bg-slate-800 hover:bg-slate-750 hover:border-slate-500"
+          }
+          ${uploading ? "opacity-50 cursor-not-allowed" : ""}
+        `}
+        onDragOver={(e) => {
+          e.preventDefault();
+          setDragOver(true);
+        }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={handleDrop}
+      >
+        <input
+          type="file"
+          className="hidden"
+          accept=".pdf,.jpg,.jpeg,.png,.webp"
+          disabled={uploading}
+          onChange={(e) => uploadFile(e.target.files?.[0])}
+        />
+        <span className="text-2xl mb-1">{uploading ? "⏳" : "📎"}</span>
+        <span className="text-sm text-slate-400">
+          {uploading ? "Analyzing document..." : "Drop PDF or photo here"}
+        </span>
+        <span className="text-xs text-slate-600 mt-1">
+          Eviction notices · Leases · Pay stubs · Court notices
+        </span>
+      </label>
+
+      {/* Uploaded documents list */}
+      {documents.length > 0 && (
+        <div className="mt-3 flex flex-col gap-2">
+          {documents.map((doc, i) => (
+            <div key={i} className="bg-slate-800 rounded-lg p-3 text-sm">
+              <div className="flex items-center gap-2 mb-1">
+                <span>📄</span>
+                <span className="font-medium text-slate-200 truncate">
+                  {doc.filename}
+                </span>
+                <span className="ml-auto text-xs bg-blue-900 text-blue-300 px-2 py-0.5 rounded-full">
+                  {doc.doc_type}
+                </span>
+              </div>
+              <p className="text-xs text-slate-400 leading-relaxed">
+                {doc.analysis?.summary || doc.message}
+              </p>
+              {doc.analysis?.urgency_flags?.length > 0 && (
+                <div className="mt-1 flex flex-wrap gap-1">
+                  {doc.analysis.urgency_flags.map((flag, j) => (
+                    <span
+                      key={j}
+                      className="text-xs bg-red-900 text-red-300 px-2 py-0.5 rounded"
+                    >
+                      ⚠️ {flag}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main App ──────────────────────────────────────────────────────────────────
 export default function App() {
   const [status, setStatus] = useState("idle"); // idle | connecting | ready | listening | speaking | error
   const [transcript, setTranscript] = useState([]);
   const [errorMsg, setErrorMsg] = useState("");
+  const [userId] = useState(() => `user_${Date.now()}`);
+  const [sessionId] = useState(() => `session_${Date.now()}`);
 
   const wsRef = useRef(null);
   const audioCtxRef = useRef(null);
@@ -329,6 +450,21 @@ export default function App() {
             </div>
           </div>
         )}
+
+        {/* ── Document Upload ── */}
+        <DocumentPanel
+          userId={userId}
+          sessionId={sessionId}
+          onAnalysis={(data) => {
+            setTranscript((prev) => [
+              ...prev,
+              {
+                role: "ASSISTANT",
+                text: `📎 Document analyzed: ${data.analysis?.summary || data.message}`,
+              },
+            ]);
+          }}
+        />
       </main>
 
       {/* ── Footer ── */}
