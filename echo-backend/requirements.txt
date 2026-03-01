@@ -1,0 +1,16 @@
+fastapi
+uvicorn
+websockets
+boto3
+python-dotenv
+strands-agents
+nova-act
+pymupdf`
+pillow
+python-multipart
+aiofiles
+aws-sdk-bedrock-runtime
+pyaudio
+sounddevice
+numpy
+smithy-aws-core
