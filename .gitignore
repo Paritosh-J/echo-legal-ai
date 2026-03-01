@@ -1,1 +1,3 @@
 echo-backend/__pycache__
+agents/__pycache__/
+echo-backend/routers/__pycache__/
