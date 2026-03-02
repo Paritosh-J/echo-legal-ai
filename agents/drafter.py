@@ -7,7 +7,8 @@ Generates customized legal letters and declarations.
 from strands import Agent, tool
 from strands.models import BedrockModel
 
-MODEL_ID = "us.amazon.nova-2-lite-v1:0"
+MODEL_ID = "apac.amazon.nova-lite-v1:0"
+REGION   = "ap-south-1"
 
 DRAFTER_PROMPT = """
 You are an expert legal document drafter specializing in plain-language
@@ -58,7 +59,7 @@ def draft_legal_document(
     Returns:
         A complete, formatted legal document as a string.
     """
-    model  = BedrockModel(model_id=MODEL_ID, region_name="us-east-1", temperature=0.3)
+    model  = BedrockModel(model_id=MODEL_ID, region_name=REGION, temperature=0.1)
     agent  = Agent(model=model, system_prompt=DRAFTER_PROMPT)
 
     facts_text = "\n".join(f"- {f}" for f in key_facts)

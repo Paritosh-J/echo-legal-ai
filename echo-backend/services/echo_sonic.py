@@ -72,8 +72,8 @@ ECHO_SYSTEM_PROMPT = (
 
 class EchoVoiceEngine:
 
-    MODEL_ID = "amazon.nova-2-sonic-v1:0"
-    REGION   = os.environ.get("AWS_DEFAULT_REGION", "us-east-1")
+    REGION   = os.environ.get("NOVA_SONIC_REGION", "us-east-1")
+    MODEL_ID = os.environ.get("NOVA_SONIC_MODEL_ID", "amazon.nova-2-sonic-v1:0")
 
     def __init__(self):
         self.prompt_name        = str(uuid.uuid4())

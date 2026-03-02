@@ -7,7 +7,8 @@ Identifies the category and severity of a user's legal issue.
 from strands import Agent, tool
 from strands.models import BedrockModel
 
-MODEL_ID = "us.amazon.nova-2-lite-v1:0"
+MODEL_ID = "apac.amazon.nova-lite-v1:0"
+REGION   = "ap-south-1"
 
 # ── System prompt ──────────────────────────────────────────────────────────────
 CLASSIFIER_PROMPT = """
@@ -46,9 +47,10 @@ def classify_legal_issue(description: str) -> str:
     """
     model = BedrockModel(
         model_id=MODEL_ID,
-        region_name="us-east-1",
-        temperature=0.1,   # low temp for consistent classification
+        region_name=REGION,
+        temperature=0.1,
     )
+
     agent  = Agent(model=model, system_prompt=CLASSIFIER_PROMPT)
     result = agent(description)
     return str(result)

@@ -21,8 +21,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-REGION        = os.environ.get("AWS_DEFAULT_REGION", "us-east-1")
-NOVA_LITE_ID  = os.environ.get("NOVA_LITE_MODEL_ID", "us.amazon.nova-2-lite-v1:0")
+NOVA_LITE_ID = os.environ.get("NOVA_LITE_MODEL_ID", "apac.amazon.nova-lite-v1:0")
+REGION       = os.environ.get("AWS_DEFAULT_REGION", "ap-south-1")
 CHUNK_SIZE    = 800    # characters per chunk
 CHUNK_OVERLAP = 100    # overlap between chunks to preserve context
 

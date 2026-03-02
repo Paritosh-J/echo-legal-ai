@@ -22,8 +22,8 @@ from opensearchpy import OpenSearch, RequestsHttpConnection, AWSV4SignerAuth
 load_dotenv()
 
 # ── Config ────────────────────────────────────────────────────────────────────
-REGION          = os.environ.get("AWS_DEFAULT_REGION", "us-east-1")
-EMBEDDINGS_MODEL = "amazon.nova-2-multimodal-embeddings-v1:0"
+EMBEDDINGS_MODEL = os.environ.get("NOVA_EMBEDDINGS_MODEL_ID", "amazon.titan-embed-text-v2:0")
+EMBED_REGION     = os.environ.get("EMBEDDINGS_REGION", "ap-south-1")
 INDEX_NAME       = "legal-documents"
 EMBED_DIMENSION  = 1024   # must match index mapping
 TOP_K            = 5      # number of results to return per search
@@ -39,7 +39,7 @@ class NovaEmbeddingsService:
         # Bedrock client for Nova Multimodal Embeddings
         self.bedrock = boto3.client(
             "bedrock-runtime",
-            region_name=REGION
+            region_name=EMBED_REGION
         )
 
         # OpenSearch Serverless client
@@ -48,7 +48,7 @@ class NovaEmbeddingsService:
             raise ValueError("OPENSEARCH_ENDPOINT not set in .env")
 
         credentials = boto3.Session().get_credentials()
-        auth = AWSV4SignerAuth(credentials, REGION, "aoss")
+        auth = AWSV4SignerAuth(credentials, EMBED_REGION, "aoss")
 
         self.os_client = OpenSearch(
             hosts=[{"host": endpoint, "port": 443}],
@@ -63,91 +63,41 @@ class NovaEmbeddingsService:
     # ── Embedding Generation ──────────────────────────────────────────────────
 
     def embed_text(self, text: str) -> list[float]:
-        """
-        Generate a 1024-dim embedding for a text chunk using Nova Multimodal.
-
-        Args:
-            text: The text string to embed (max 8192 chars).
-
-        Returns:
-            List of 1024 floats representing the embedding vector.
-        """
+        """Generate 1024-dim embedding using Amazon Titan Text Embeddings v2."""
         response = self.bedrock.invoke_model(
             modelId=EMBEDDINGS_MODEL,
             body=json.dumps({
-                "taskType": "SINGLE_EMBEDDING",
-                "singleEmbeddingParams": {
-                    "embeddingPurpose": "GENERIC_INDEX",
-                    "embeddingDimension": EMBED_DIMENSION,
-                    "text": {
-                        "truncationMode": "END",
-                        "value": text[:8192]
-                    }
-                }
+                "inputText": text[:8192],
+                "dimensions": EMBED_DIMENSION,
+                "normalize": True
             }),
             contentType="application/json",
             accept="application/json"
         )
         result = json.loads(response["body"].read())
-        return result["embeddings"][0]["embedding"]
+        return result["embedding"]
 
     def embed_image(self, image_bytes: bytes, image_format: str = "jpeg") -> list[float]:
         """
-        Generate a 1024-dim embedding for an image using Nova Multimodal.
-
-        Args:
-            image_bytes: Raw image bytes (JPEG or PNG).
-            image_format: 'jpeg' or 'png'.
-
-        Returns:
-            List of 1024 floats representing the image embedding vector.
+        Titan is text-only — embed a description placeholder for images.
+        Nova Act will analyze the actual image content; we index a text hook.
         """
-        b64_image = base64.b64encode(image_bytes).decode("utf-8")
-        response  = self.bedrock.invoke_model(
-            modelId=EMBEDDINGS_MODEL,
-            body=json.dumps({
-                "taskType": "SINGLE_EMBEDDING",
-                "singleEmbeddingParams": {
-                    "embeddingPurpose": "GENERIC_INDEX",
-                    "embeddingDimension": EMBED_DIMENSION,
-                    "image": {
-                        "detailLevel": "DOCUMENT_IMAGE",
-                        "format": image_format,
-                        "source": {
-                            "bytes": b64_image
-                        }
-                    }
-                }
-            }),
-            contentType="application/json",
-            accept="application/json"
-        )
-        result = json.loads(response["body"].read())
-        return result["embeddings"][0]["embedding"]
+        return self.embed_text("Legal document image uploaded by user for analysis.")
 
     def embed_for_search(self, query: str) -> list[float]:
-        """
-        Generate a retrieval-optimized embedding for a search query.
-        Uses GENERIC_RETRIEVAL purpose instead of GENERIC_INDEX.
-        """
+        """Generate retrieval-optimized embedding for a search query."""
         response = self.bedrock.invoke_model(
             modelId=EMBEDDINGS_MODEL,
             body=json.dumps({
-                "taskType": "SINGLE_EMBEDDING",
-                "singleEmbeddingParams": {
-                    "embeddingPurpose": "GENERIC_RETRIEVAL",
-                    "embeddingDimension": EMBED_DIMENSION,
-                    "text": {
-                        "truncationMode": "END",
-                        "value": query[:8192]
-                    }
-                }
+                "inputText": query[:8192],
+                "dimensions": EMBED_DIMENSION,
+                "normalize": True
             }),
             contentType="application/json",
             accept="application/json"
         )
         result = json.loads(response["body"].read())
-        return result["embeddings"][0]["embedding"]
+        return result["embedding"]
 
     # ── OpenSearch Operations ─────────────────────────────────────────────────
 

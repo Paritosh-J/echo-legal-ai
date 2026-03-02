@@ -7,7 +7,8 @@ Determines what kind of legal help the user qualifies for.
 from strands import Agent, tool
 from strands.models import BedrockModel
 
-MODEL_ID = "us.amazon.nova-2-lite-v1:0"
+MODEL_ID = "apac.amazon.nova-lite-v1:0"
+REGION   = "ap-south-1"
 
 ELIGIBILITY_PROMPT = """
 You are a legal aid eligibility specialist. Assess whether a person
@@ -53,7 +54,7 @@ def assess_eligibility(
     Returns:
         JSON string with eligibility determination and recommended next steps.
     """
-    model  = BedrockModel(model_id=MODEL_ID, region_name="us-east-1", temperature=0.2)
+    model  = BedrockModel(model_id=MODEL_ID, region_name=REGION, temperature=0.1)
     agent  = Agent(model=model, system_prompt=ELIGIBILITY_PROMPT)
     prompt = (
         f"Issue Category: {issue_category}\n"
