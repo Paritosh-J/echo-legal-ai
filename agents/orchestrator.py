@@ -19,7 +19,8 @@ from agents.classifier  import classify_legal_issue
 from agents.eligibility import assess_eligibility
 from agents.drafter     import draft_legal_document
 
-MODEL_ID = "us.amazon.nova-2-lite-v1:0"
+MODEL_ID = "apac.amazon.nova-lite-v1:0"
+REGION   = "ap-south-1"
 
 ORCHESTRATOR_PROMPT = """
 You are Echo, a compassionate AI legal aid assistant and orchestrator.
@@ -54,8 +55,8 @@ class EchoOrchestrator:
     def __init__(self):
         self.model = BedrockModel(
             model_id=MODEL_ID,
-            region_name="us-east-1",
-            temperature=0.4,
+            region_name=REGION,
+            temperature=0.1,
             streaming=True,
         )
         self.agent = Agent(
