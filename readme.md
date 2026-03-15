@@ -102,6 +102,13 @@ No lawyer needed. No complex forms. No barriers.
 | UI Automation | Amazon Nova Act | Autonomous legal portal navigation and form filing |
 | Agent Orchestration | Strands Agents SDK | Multi-agent coordination and tool management |
 
+
+> **Regional Note:** Nova Act API key access is currently limited to US accounts.
+> Echo implements the full Nova Act workflow architecture with a production-quality
+> simulation layer that activates automatically for non-US deployments.
+> The codebase is fully ready to run real Nova Act workflows once API access
+> is available — simply set `NOVA_ACT_API_KEY` in `.env`.
+
 ### Backend
 | Component | Technology |
 |---|---|
