@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 
 // ── Audio constants ───────────────────────────────────────────────────────────
-const INPUT_SAMPLE_RATE = 16000;
-const OUTPUT_SAMPLE_RATE = 24000;
+const INPUT_SAMPLE_RATE = 16000; // sent to Nova Sonic
+const OUTPUT_SAMPLE_RATE = 24000; // received from Nova Sonic
 
+// Downsample Float32 from browser native (48kHz) to 16kHz for Nova Sonic
 function downsample(buffer, fromRate, toRate) {
   if (fromRate === toRate) return buffer;
   const ratio = fromRate / toRate;
@@ -13,6 +14,7 @@ function downsample(buffer, fromRate, toRate) {
   return result;
 }
 
+// Float32 PCM → Int16 PCM → Base64
 function float32ToB64(float32) {
   const int16 = new Int16Array(float32.length);
   for (let i = 0; i < float32.length; i++)
@@ -23,6 +25,7 @@ function float32ToB64(float32) {
   return btoa(binary);
 }
 
+// Base64 → Int16 PCM → Float32
 function b64ToFloat32(b64) {
   const binary = atob(b64);
   const bytes = new Uint8Array(binary.length);
@@ -42,21 +45,18 @@ const PROGRESS_STEPS = [
   { id: "file", label: "Filing", icon: "🤖" },
 ];
 
-// ── Progress Bar ──────────────────────────────────────────────────────────────
 function ProgressBar({ currentStep }) {
   const currentIdx = PROGRESS_STEPS.findIndex((s) => s.id === currentStep);
   return (
-    <div className="w-full flex items-center justify-between px-2">
+    <div className="w-full flex items-center justify-between px-1">
       {PROGRESS_STEPS.map((step, i) => {
         const done = i < currentIdx;
         const active = i === currentIdx;
-        const pending = i > currentIdx;
         return (
           <div key={step.id} className="flex items-center flex-1">
             <div className="flex flex-col items-center gap-1">
               <div
-                className={`
-                w-8 h-8 rounded-full flex items-center justify-center text-sm
+                className={`w-8 h-8 rounded-full flex items-center justify-center text-sm
                 transition-all duration-500
                 ${
                   done
@@ -64,8 +64,7 @@ function ProgressBar({ currentStep }) {
                     : active
                       ? "bg-blue-600 text-white ring-4 ring-blue-900"
                       : "bg-slate-700 text-slate-500"
-                }
-              `}
+                }`}
               >
                 {done ? "✓" : step.icon}
               </div>
@@ -88,9 +87,8 @@ function ProgressBar({ currentStep }) {
   );
 }
 
-// ── Voice Orb ─────────────────────────────────────────────────────────────────
 function VoiceOrb({ status, onClick }) {
-  const orbConfig = {
+  const cfg = {
     idle: { bg: "bg-slate-700", ring: "", icon: "🎙️", pulse: false },
     connecting: {
       bg: "bg-yellow-500",
@@ -116,26 +114,28 @@ function VoiceOrb({ status, onClick }) {
       icon: "🧠",
       pulse: true,
     },
+    paused: {
+      bg: "bg-amber-600",
+      ring: "ring-4 ring-amber-900",
+      icon: "⏸️",
+      pulse: false,
+    },
     error: {
       bg: "bg-red-600",
       ring: "ring-4 ring-red-900",
       icon: "❌",
       pulse: false,
     },
-  };
-  const cfg = orbConfig[status] || orbConfig.idle;
+  }[status] || { bg: "bg-slate-700", ring: "", icon: "🎙️", pulse: false };
 
   return (
     <div className="flex flex-col items-center gap-3">
       <button
         onClick={onClick}
-        className={`
-          w-32 h-32 rounded-full flex items-center justify-center
-          text-5xl shadow-2xl transition-all duration-300
-          ${cfg.bg} ${cfg.ring}
-          ${cfg.pulse ? "animate-pulse" : ""}
-          hover:scale-105 active:scale-95 cursor-pointer
-        `}
+        className={`w-32 h-32 rounded-full flex items-center justify-center text-5xl
+          shadow-2xl transition-all duration-300 cursor-pointer
+          ${cfg.bg} ${cfg.ring} ${cfg.pulse ? "animate-pulse" : ""}
+          hover:scale-105 active:scale-95`}
       >
         {cfg.icon}
       </button>
@@ -147,32 +147,31 @@ function VoiceOrb({ status, onClick }) {
             : status === "listening"
               ? "Listening..."
               : status === "speaking"
-                ? "Echo speaking"
+                ? "Echo is speaking"
                 : status === "thinking"
                   ? "Analyzing..."
-                  : status === "error"
-                    ? "Error — tap to retry"
-                    : ""}
+                  : status === "paused"
+                    ? "Mic paused"
+                    : status === "error"
+                      ? "Error — tap to retry"
+                      : ""}
       </span>
     </div>
   );
 }
 
-// ── Transcript Bubble ─────────────────────────────────────────────────────────
 function TranscriptBubble({ role, text }) {
   const isUser = role === "USER";
   return (
     <div className={`flex gap-2 ${isUser ? "flex-row-reverse" : "flex-row"}`}>
       <span className="text-lg shrink-0 mt-1">{isUser ? "👤" : "⚖️"}</span>
       <div
-        className={`
-        px-4 py-2.5 rounded-2xl text-sm leading-relaxed max-w-xs
+        className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed max-w-xs
         ${
           isUser
             ? "bg-blue-600 text-white rounded-tr-sm"
             : "bg-slate-700 text-slate-100 rounded-tl-sm"
-        }
-      `}
+        }`}
       >
         {text}
       </div>
@@ -250,7 +249,6 @@ function DocumentPanel({ userId, sessionId, onAnalysis }) {
             : "Drop PDF, photo, or notice here"}
         </span>
       </label>
-
       {documents.map((doc, i) => (
         <div key={i} className="mt-2 bg-slate-800 rounded-lg p-3">
           <div className="flex items-center gap-2">
@@ -287,7 +285,7 @@ function DocumentPanel({ userId, sessionId, onAnalysis }) {
 
 // ── Nova Act Filing Panel ─────────────────────────────────────────────────────
 function FilingPanel({ sessionId, issueType, issueSummary }) {
-  const [phase, setPhase] = useState("idle"); // idle|form|running|done|failed
+  const [phase, setPhase] = useState("idle");
   const [steps, setSteps] = useState([]);
   const [confirm, setConfirm] = useState("");
   const [form, setForm] = useState({
@@ -307,7 +305,6 @@ function FilingPanel({ sessionId, issueType, issueSummary }) {
     setPhase("running");
     setSteps([]);
     setConfirm("");
-
     try {
       const res = await fetch("http://localhost:8000/nova-act/start", {
         method: "POST",
@@ -327,8 +324,6 @@ function FilingPanel({ sessionId, issueType, issueSummary }) {
       });
       const data = await res.json();
       const jobId = data.job_id;
-
-      // Stream live steps via SSE
       const evtSrc = new EventSource(
         `http://localhost:8000/nova-act/stream/${jobId}`,
       );
@@ -478,9 +473,11 @@ export default function App() {
   const [voiceStatus, setVoiceStatus] = useState("idle");
   const [transcript, setTranscript] = useState([]);
   const [agentResult, setAgentResult] = useState(null);
+  const [agentLoading, setAgentLoading] = useState(false);
   const [progressStep, setProgressStep] = useState("intake");
   const [errorMsg, setErrorMsg] = useState("");
-  const [activeTab, setActiveTab] = useState("voice"); // voice | docs | file
+  const [activeTab, setActiveTab] = useState("voice");
+  const [micPaused, setMicPaused] = useState(false);
 
   const [userId] = useState(() => `user_${Date.now()}`);
   const [sessionId] = useState(() => `session_${Date.now()}`);
@@ -489,46 +486,75 @@ export default function App() {
   const audioCtxRef = useRef(null);
   const mediaStreamRef = useRef(null);
   const processorRef = useRef(null);
+  const micCtxRef = useRef(null); // separate AudioContext for mic capture
   const nextPlayTime = useRef(0);
+  const transcriptRef = useRef([]); // always up-to-date copy for callbacks
 
-  // ── Play Echo's audio response ─────────────────────────────────────────────
+  // Keep transcriptRef in sync
+  useEffect(() => {
+    transcriptRef.current = transcript;
+  }, [transcript]);
+
+  // ── FIXED: Play audio chunk from Nova Sonic ──────────────────────────────
   const playChunk = useCallback((b64) => {
     const ctx = audioCtxRef.current;
     if (!ctx) return;
-    const float = b64ToFloat32(b64);
-    const buf = ctx.createBuffer(1, float.length, OUTPUT_SAMPLE_RATE);
-    buf.getChannelData(0).set(float);
-    const src = ctx.createBufferSource();
-    src.buffer = buf;
-    src.connect(ctx.destination);
-    const start = Math.max(ctx.currentTime, nextPlayTime.current);
-    src.start(start);
-    nextPlayTime.current = start + buf.duration;
+
+    // Resume AudioContext — Chrome suspends it until user gesture
+    if (ctx.state === "suspended") {
+      ctx.resume().catch(() => {});
+    }
+
+    const float32 = b64ToFloat32(b64);
+
+    // Create buffer at OUTPUT_SAMPLE_RATE (24000) regardless of ctx rate.
+    // The browser handles resampling to the device's native rate automatically.
+    const buffer = ctx.createBuffer(1, float32.length, OUTPUT_SAMPLE_RATE);
+    buffer.getChannelData(0).set(float32);
+
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(ctx.destination);
+
+    // Guard against stale nextPlayTime (e.g. after a long silence)
+    const now = ctx.currentTime;
+    const startAt = Math.max(now + 0.02, nextPlayTime.current); // 20ms buffer
+    source.start(startAt);
+    nextPlayTime.current = startAt + buffer.duration;
   }, []);
 
-  // ── Send transcript to agents pipeline ────────────────────────────────────
-  const sendToAgents = useCallback(
-    async (text) => {
-      setVoiceStatus("thinking");
+  // ── Trigger agents pipeline with current transcript ──────────────────────
+  const runAgentAnalysis = useCallback(
+    async (transcriptToAnalyze) => {
+      if (!transcriptToAnalyze || transcriptToAnalyze.length === 0) return;
+
+      // Build a combined user message from all USER turns
+      const userText = transcriptToAnalyze
+        .filter((t) => t.role === "USER")
+        .map((t) => t.text)
+        .join(" ");
+
+      if (!userText.trim()) return;
+
+      setAgentLoading(true);
       setProgressStep("analyze");
+
       try {
         const res = await fetch("http://localhost:8000/agents/process", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ session_id: sessionId, message: text }),
+          body: JSON.stringify({ session_id: sessionId, message: userText }),
         });
         const data = await res.json();
         setAgentResult(data);
-        if (data.classification?.urgency) {
-          setProgressStep(
-            data.document
-              ? "draft"
-              : data.classification?.urgency === "CRITICAL"
-                ? "draft"
-                : "analyze",
-          );
+
+        if (data.classification?.urgency === "CRITICAL" || data.document) {
+          setProgressStep("draft");
+        } else if (data.classification?.category) {
+          setProgressStep("analyze");
         }
-        // Add agent response to transcript
+
+        // Append agent's text response to transcript
         if (data.response_text) {
           setTranscript((prev) => [
             ...prev,
@@ -536,54 +562,108 @@ export default function App() {
           ]);
         }
       } catch (e) {
-        console.error("Agent error:", e);
+        console.error("Agent analysis error:", e);
       } finally {
-        setVoiceStatus("listening");
+        setAgentLoading(false);
       }
     },
     [sessionId],
   );
 
-  // ── Start voice session ────────────────────────────────────────────────────
+  // ── Stop & Analyze button handler ─────────────────────────────────────────
+  const handleStopAndAnalyze = useCallback(() => {
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+
+    // 1. Tell backend to stop forwarding mic audio to Nova Sonic
+    wsRef.current.send(JSON.stringify({ type: "pause_mic" }));
+    setMicPaused(true);
+    setVoiceStatus("paused");
+
+    // 2. Run agent analysis with current transcript
+    runAgentAnalysis(transcriptRef.current);
+
+    // 3. Switch to analysis tab automatically
+    setActiveTab("voice");
+  }, [runAgentAnalysis]);
+
+  // ── Resume listening after analysis ─────────────────────────────────────
+  const handleResumeListening = useCallback(() => {
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+    wsRef.current.send(JSON.stringify({ type: "resume_mic" }));
+    setMicPaused(false);
+    setVoiceStatus("listening");
+  }, []);
+
+  // ── Start voice session ───────────────────────────────────────────────────
   const startSession = useCallback(async () => {
     setVoiceStatus("connecting");
     setTranscript([]);
     setAgentResult(null);
+    setAgentLoading(false);
     setProgressStep("intake");
     setErrorMsg("");
+    setMicPaused(false);
 
-    audioCtxRef.current = new AudioContext({ sampleRate: OUTPUT_SAMPLE_RATE });
+    // Create AudioContext WITHOUT forcing a sample rate.
+    // Browser picks its native rate (44100 or 48000).
+    // Buffers will be created at 24000Hz and browser resamples on playback.
+    audioCtxRef.current = new AudioContext();
     nextPlayTime.current = 0;
 
     const ws = new WebSocket("ws://localhost:8000/ws/voice");
     wsRef.current = ws;
 
-    ws.onopen = () => ws.send(JSON.stringify({ type: "start" }));
+    ws.onopen = () => {
+      ws.send(JSON.stringify({ type: "start" }));
+    };
 
     ws.onmessage = async (event) => {
       const msg = JSON.parse(event.data);
 
-      if (msg.type === "ready") {
-        setVoiceStatus("listening");
-        await startMicCapture(ws);
-      } else if (msg.type === "audio") {
-        setVoiceStatus("speaking");
-        playChunk(msg.data);
-        setTimeout(
-          () => setVoiceStatus((s) => (s === "speaking" ? "listening" : s)),
-          800,
-        );
-      } else if (msg.type === "transcript") {
-        const newEntry = { role: msg.role, text: msg.text };
-        setTranscript((prev) => [...prev, newEntry]);
-        // Send user speech to agents pipeline
-        if (msg.role === "USER" && msg.text.length > 10) {
-          sendToAgents(msg.text);
-        }
-        if (msg.role === "ASSISTANT") setProgressStep("analyze");
-      } else if (msg.type === "error") {
-        setErrorMsg(msg.message);
-        setVoiceStatus("error");
+      switch (msg.type) {
+        case "ready":
+          setVoiceStatus("listening");
+          await startMicCapture(ws);
+          break;
+
+        case "audio":
+          // Set status to speaking only when audio actually arrives
+          setVoiceStatus("speaking");
+          playChunk(msg.data);
+          // Return to listening after roughly the chunk's expected play duration
+          setTimeout(
+            () => setVoiceStatus((s) => (s === "speaking" ? "listening" : s)),
+            600,
+          );
+          break;
+
+        case "transcript":
+          setTranscript((prev) => [
+            ...prev,
+            { role: msg.role, text: msg.text },
+          ]);
+          if (msg.role === "ASSISTANT") setProgressStep("analyze");
+          break;
+
+        case "mic_paused":
+          console.log("[ws] Mic pause confirmed by server");
+          break;
+
+        case "mic_resumed":
+          console.log("[ws] Mic resume confirmed by server");
+          break;
+
+        case "error":
+          setErrorMsg(msg.message);
+          setVoiceStatus("error");
+          break;
+
+        case "done":
+          if (!micPaused) setVoiceStatus("listening");
+          break;
+
+        default:
+          break;
       }
     };
 
@@ -593,47 +673,64 @@ export default function App() {
         "Could not connect to backend. Is the server running on port 8000?",
       );
     };
-    ws.onclose = () => {
-      if (voiceStatus !== "idle") setVoiceStatus("idle");
-    };
-  }, [playChunk, sendToAgents]);
 
-  // ── Mic capture ────────────────────────────────────────────────────────────
+    ws.onclose = () => {
+      setVoiceStatus((s) => (s !== "error" ? "idle" : s));
+    };
+  }, [playChunk, micPaused]);
+
+  // ── Mic capture → base64 PCM → WebSocket ─────────────────────────────────
   const startMicCapture = async (ws) => {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     mediaStreamRef.current = stream;
+
+    // Use a separate AudioContext for mic capture so we know its actual rate
     const ctx = new AudioContext();
+    micCtxRef.current = ctx;
     const source = ctx.createMediaStreamSource(stream);
     const processor = ctx.createScriptProcessor(4096, 1, 1);
     processorRef.current = processor;
+
     processor.onaudioprocess = (e) => {
-      if (ws.readyState !== WebSocket.OPEN) return;
+      if (!ws || ws.readyState !== WebSocket.OPEN) return;
       const raw = e.inputBuffer.getChannelData(0);
       const resampled = downsample(raw, ctx.sampleRate, INPUT_SAMPLE_RATE);
-      ws.send(JSON.stringify({ type: "audio", data: float32ToB64(resampled) }));
+      const b64 = float32ToB64(resampled);
+      ws.send(JSON.stringify({ type: "audio", data: b64 }));
     };
+
     source.connect(processor);
     processor.connect(ctx.destination);
   };
 
-  // ── Stop session ───────────────────────────────────────────────────────────
+  // ── Stop session entirely ─────────────────────────────────────────────────
   const stopSession = useCallback(() => {
-    wsRef.current?.send(JSON.stringify({ type: "stop" }));
-    wsRef.current?.close();
-    wsRef.current = null;
+    if (wsRef.current) {
+      if (wsRef.current.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({ type: "stop" }));
+      }
+      wsRef.current.close();
+      wsRef.current = null;
+    }
     mediaStreamRef.current?.getTracks().forEach((t) => t.stop());
     mediaStreamRef.current = null;
     processorRef.current?.disconnect();
     processorRef.current = null;
+    micCtxRef.current?.close();
+    micCtxRef.current = null;
     audioCtxRef.current?.close();
     audioCtxRef.current = null;
     setVoiceStatus("idle");
+    setMicPaused(false);
     setProgressStep("intake");
   }, []);
 
   useEffect(() => () => stopSession(), []);
 
   const isActive = !["idle", "error"].includes(voiceStatus);
+  const canAnalyze =
+    isActive && !micPaused && transcript.some((t) => t.role === "USER");
+  const showResumeBtn = micPaused;
 
   return (
     <div className="min-h-screen bg-slate-900 text-white flex flex-col">
@@ -668,9 +765,11 @@ export default function App() {
                   ? "bg-green-900 text-green-300"
                   : voiceStatus === "thinking"
                     ? "bg-purple-900 text-purple-300"
-                    : voiceStatus === "error"
-                      ? "bg-red-900 text-red-300"
-                      : "bg-slate-700 text-slate-400"
+                    : voiceStatus === "paused"
+                      ? "bg-amber-900 text-amber-300"
+                      : voiceStatus === "error"
+                        ? "bg-red-900 text-red-300"
+                        : "bg-slate-700 text-slate-400"
             }`}
           >
             {voiceStatus.toUpperCase()}
@@ -678,7 +777,7 @@ export default function App() {
         </div>
       </header>
 
-      <main className="flex-1 w-full max-w-lg mx-auto flex flex-col items-center px-4 py-6 gap-6">
+      <main className="flex-1 w-full max-w-lg mx-auto flex flex-col items-center px-4 py-6 gap-5">
         {/* ── Progress Bar ── */}
         <ProgressBar currentStep={progressStep} />
 
@@ -687,6 +786,47 @@ export default function App() {
           status={voiceStatus}
           onClick={isActive ? stopSession : startSession}
         />
+
+        {/* ── Stop & Analyze / Resume Buttons ── */}
+        {isActive && (
+          <div className="w-full flex gap-2">
+            {!micPaused ? (
+              <button
+                onClick={handleStopAndAnalyze}
+                disabled={!canAnalyze || agentLoading}
+                className={`flex-1 py-3 rounded-xl font-semibold text-sm
+                  transition-all duration-200 flex items-center justify-center gap-2
+                  ${
+                    canAnalyze && !agentLoading
+                      ? "bg-purple-700 hover:bg-purple-600 text-white cursor-pointer"
+                      : "bg-slate-800 text-slate-500 cursor-not-allowed"
+                  }`}
+              >
+                {agentLoading ? (
+                  <>
+                    <span className="animate-spin">⏳</span>
+                    Analyzing with Nova...
+                  </>
+                ) : (
+                  <>
+                    <span>🧠</span>
+                    Stop & Analyze
+                  </>
+                )}
+              </button>
+            ) : (
+              <button
+                onClick={handleResumeListening}
+                className="flex-1 py-3 rounded-xl bg-blue-700 hover:bg-blue-600
+                           text-white font-semibold text-sm transition-colors
+                           flex items-center justify-center gap-2"
+              >
+                <span>🎙️</span>
+                Resume Listening
+              </button>
+            )}
+          </div>
+        )}
 
         {/* ── Error ── */}
         {errorMsg && (
@@ -709,10 +849,15 @@ export default function App() {
               <span>🔒 Private</span>
               <span>💸 Free</span>
             </div>
+            <p className="text-xs text-slate-600 mt-3">
+              After speaking, click{" "}
+              <strong className="text-slate-400">🧠 Stop & Analyze</strong> to
+              run the full legal analysis pipeline.
+            </p>
           </div>
         )}
 
-        {/* ── Tabs: Voice | Documents | Filing ── */}
+        {/* ── Tabs ── */}
         {(isActive || transcript.length > 0) && (
           <div className="w-full">
             <div className="flex rounded-xl overflow-hidden border border-slate-700 mb-4">
@@ -736,59 +881,125 @@ export default function App() {
               ))}
             </div>
 
-            {/* Conversation Tab */}
+            {/* ── Conversation Tab ── */}
             {activeTab === "voice" && (
-              <div className="flex flex-col gap-3 max-h-80 overflow-y-auto pr-1">
-                {transcript.length === 0 ? (
-                  <p className="text-center text-slate-500 text-sm py-8">
-                    Start speaking — Echo is listening...
-                  </p>
-                ) : (
-                  transcript.map((t, i) => (
-                    <TranscriptBubble key={i} role={t.role} text={t.text} />
-                  ))
-                )}
-                {/* Agent Analysis Card */}
-                {agentResult?.classification?.category && (
-                  <div className="bg-slate-800 rounded-xl p-3 border border-slate-700 mt-2">
-                    <p className="text-xs font-semibold text-slate-400 mb-2">
-                      🧠 Echo's Analysis
+              <div className="flex flex-col gap-3">
+                {/* Live transcript */}
+                <div className="flex flex-col gap-3 max-h-64 overflow-y-auto pr-1">
+                  {transcript.length === 0 ? (
+                    <p className="text-center text-slate-500 text-sm py-8">
+                      Start speaking — Echo is listening...
                     </p>
-                    <div className="flex flex-wrap gap-2">
-                      <span className="text-xs bg-blue-900 text-blue-300 px-2 py-1 rounded-lg">
-                        {agentResult.classification.category}
-                      </span>
-                      <span
-                        className={`text-xs px-2 py-1 rounded-lg
-                        ${
-                          agentResult.classification.urgency === "CRITICAL"
-                            ? "bg-red-900 text-red-300"
-                            : agentResult.classification.urgency === "HIGH"
-                              ? "bg-orange-900 text-orange-300"
-                              : "bg-slate-700 text-slate-300"
-                        }`}
-                      >
-                        {agentResult.classification.urgency} urgency
-                      </span>
+                  ) : (
+                    transcript.map((t, i) => (
+                      <TranscriptBubble key={i} role={t.role} text={t.text} />
+                    ))
+                  )}
+                </div>
+
+                {/* Agent Analysis Card */}
+                {agentLoading && (
+                  <div className="bg-slate-800 rounded-xl p-4 border border-purple-800 animate-pulse">
+                    <p className="text-xs text-purple-400 flex items-center gap-2">
+                      <span className="animate-spin">⏳</span>
+                      Running legal analysis through Nova Lite agents...
+                    </p>
+                  </div>
+                )}
+
+                {agentResult && !agentLoading && (
+                  <div className="bg-slate-800 rounded-xl p-4 border border-slate-700">
+                    <p className="text-xs font-semibold text-slate-400 mb-3">
+                      🧠 Echo's Legal Analysis
+                    </p>
+
+                    {/* Category + Urgency badges */}
+                    <div className="flex flex-wrap gap-2 mb-3">
+                      {agentResult.classification?.category && (
+                        <span className="text-xs bg-blue-900 text-blue-300 px-2 py-1 rounded-lg">
+                          {agentResult.classification.category}
+                        </span>
+                      )}
+                      {agentResult.classification?.urgency && (
+                        <span
+                          className={`text-xs px-2 py-1 rounded-lg
+                          ${
+                            agentResult.classification.urgency === "CRITICAL"
+                              ? "bg-red-900 text-red-300"
+                              : agentResult.classification.urgency === "HIGH"
+                                ? "bg-orange-900 text-orange-300"
+                                : "bg-slate-700 text-slate-300"
+                          }`}
+                        >
+                          {agentResult.classification.urgency} urgency
+                        </span>
+                      )}
+                      {agentResult.eligibility?.qualifies_for_legal_aid && (
+                        <span className="text-xs bg-green-900 text-green-300 px-2 py-1 rounded-lg">
+                          ✅ Qualifies for legal aid
+                        </span>
+                      )}
                     </div>
-                    {agentResult.classification.summary && (
-                      <p className="text-xs text-slate-400 mt-2 leading-relaxed">
+
+                    {/* Summary */}
+                    {agentResult.classification?.summary && (
+                      <p className="text-xs text-slate-400 leading-relaxed mb-3">
                         {agentResult.classification.summary}
                       </p>
                     )}
+
+                    {/* Next steps */}
+                    {agentResult.eligibility?.next_steps?.length > 0 && (
+                      <div className="mb-3">
+                        <p className="text-xs font-semibold text-slate-500 mb-1">
+                          Next Steps:
+                        </p>
+                        <ul className="space-y-1">
+                          {agentResult.eligibility.next_steps
+                            .slice(0, 3)
+                            .map((s, i) => (
+                              <li
+                                key={i}
+                                className="text-xs text-slate-400 flex gap-1"
+                              >
+                                <span className="text-green-500 shrink-0">
+                                  →
+                                </span>{" "}
+                                {s}
+                              </li>
+                            ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {/* Document drafted */}
                     {agentResult.document && (
-                      <div className="mt-2 pt-2 border-t border-slate-700">
-                        <p className="text-xs text-green-400">
-                          ✍️ Legal letter drafted — switch to File tab to submit
+                      <div className="pt-2 border-t border-slate-700">
+                        <p className="text-xs text-green-400 flex items-center gap-1">
+                          ✍️ Legal letter drafted
+                          <span className="text-slate-500">
+                            — switch to File tab to submit
+                          </span>
                         </p>
                       </div>
                     )}
+
+                    {/* Time-sensitive warning */}
+                    {agentResult.eligibility?.time_sensitive_actions &&
+                      agentResult.eligibility.time_sensitive_actions !==
+                        "NONE" && (
+                        <div className="mt-2 bg-red-950 border border-red-800 rounded-lg p-2">
+                          <p className="text-xs text-red-300">
+                            ⚠️ {agentResult.eligibility.time_sensitive_actions}
+                          </p>
+                        </div>
+                      )}
                   </div>
                 )}
               </div>
             )}
 
-            {/* Documents Tab */}
+            {/* ── Documents Tab ── */}
             {activeTab === "docs" && (
               <DocumentPanel
                 userId={userId}
@@ -806,7 +1017,7 @@ export default function App() {
               />
             )}
 
-            {/* Filing Tab */}
+            {/* ── Filing Tab ── */}
             {activeTab === "file" && (
               <FilingPanel
                 sessionId={sessionId}
@@ -820,8 +1031,9 @@ export default function App() {
 
       {/* ── Footer ── */}
       <footer className="py-3 text-center text-xs text-slate-700 border-t border-slate-800">
-        Echo · Amazon Nova 2 Sonic · Nova Lite · Titan Embeddings · Nova Act
-        &nbsp;·&nbsp; ⚖️ Always consult a licensed attorney for final decisions
+        Echo · Amazon Nova 2 Sonic · Nova Lite APAC · Titan Embeddings · Nova
+        Act &nbsp;·&nbsp; ⚖️ Always consult a licensed attorney for final
+        decisions
       </footer>
     </div>
   );
