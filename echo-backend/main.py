@@ -30,6 +30,7 @@ from smithy_aws_core.identity import AWSCredentialsIdentity
 from smithy_core.aio.interfaces.identity import IdentityResolver
 from routers.agents import router as agents_router
 from routers.documents import router as documents_router
+from routers.nova_act_router import router as nova_act_router
 
 
 # ── Credentials bridge ────────────────────────────────────────────────────────
@@ -48,6 +49,7 @@ app = FastAPI(title="Echo Legal AI API", version="1.0.0")
 
 app.include_router(agents_router)
 app.include_router(documents_router)
+app.include_router(nova_act_router)
 
 app.add_middleware(
     CORSMiddleware,

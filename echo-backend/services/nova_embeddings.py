@@ -24,6 +24,7 @@ load_dotenv()
 # ── Config ────────────────────────────────────────────────────────────────────
 EMBEDDINGS_MODEL = os.environ.get("NOVA_EMBEDDINGS_MODEL_ID", "amazon.titan-embed-text-v2:0")
 EMBED_REGION     = os.environ.get("EMBEDDINGS_REGION", "ap-south-1")
+OPENSEARCH_REGION = os.environ.get("OPENSEARCH_REGION", EMBED_REGION)
 INDEX_NAME       = "legal-documents"
 EMBED_DIMENSION  = 1024   # must match index mapping
 TOP_K            = 5      # number of results to return per search
@@ -48,7 +49,7 @@ class NovaEmbeddingsService:
             raise ValueError("OPENSEARCH_ENDPOINT not set in .env")
 
         credentials = boto3.Session().get_credentials()
-        auth = AWSV4SignerAuth(credentials, EMBED_REGION, "aoss")
+        auth = AWSV4SignerAuth(credentials, OPENSEARCH_REGION, "aoss")
 
         self.os_client = OpenSearch(
             hosts=[{"host": endpoint, "port": 443}],
@@ -148,9 +149,8 @@ class NovaEmbeddingsService:
                 "uploaded_at": datetime.now(timezone.utc).isoformat(),
             }
 
-            os_id = f"{doc_id}_chunk_{i}"
-            self.os_client.index(index=INDEX_NAME, id=os_id, body=doc)
-            indexed_ids.append(os_id)
+            response = self.os_client.index(index=INDEX_NAME, body=doc)
+            indexed_ids.append(response["_id"])   # use auto-generated ID
 
         print(f"  ✅ Indexed {len(indexed_ids)} chunks for doc '{filename}'")
         return indexed_ids
@@ -188,8 +188,8 @@ class NovaEmbeddingsService:
             "uploaded_at": datetime.now(timezone.utc).isoformat(),
         }
 
-        os_id = f"{doc_id}_image_0"
-        self.os_client.index(index=INDEX_NAME, id=os_id, body=doc)
+        response = self.os_client.index(index=INDEX_NAME, body=doc)
+        os_id = response["_id"]
         print(f"  ✅ Indexed image '{filename}'")
         return os_id
 
