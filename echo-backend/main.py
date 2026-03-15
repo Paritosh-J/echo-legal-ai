@@ -58,7 +58,10 @@ app.add_middleware(
 )
 
 REGION   = os.environ.get("AWS_DEFAULT_REGION", "us-east-1")
-MODEL_ID = "amazon.nova-2-sonic-v1:0"
+MODEL_ID = os.environ.get("NOVA_SONIC_MODEL_ID", "amazon.nova-2-sonic-v1:0")
+
+print(f"[config] Nova Sonic region : {REGION}")
+print(f"[config] Nova Sonic model  : {MODEL_ID}")
 
 ECHO_SYSTEM_PROMPT = (
     "You are Echo, a warm and knowledgeable AI legal aid assistant. "
@@ -98,6 +101,7 @@ class SonicSession:
         self.sys_content  = str(uuid.uuid4())
         self.audio_in     = str(uuid.uuid4())
         self.is_active    = False
+        self.mic_paused   = False
         self.stream       = None
         self.client       = None
 
@@ -165,6 +169,8 @@ class SonicSession:
                 "encoding":        "base64"
             }
         }}})
+        
+        print(f"[sonic] Session started — prompt: {self.prompt_name[:8]}...")
 
     async def stop(self):
         if not self.is_active:
@@ -181,7 +187,12 @@ class SonicSession:
             print(f"[stop_err] {e}")
 
     async def send_audio(self, pcm_b64: str):
-        """Send base64-encoded PCM audio chunk from browser to Nova Sonic."""
+        """
+        Forward browser mic audio to Nova Sonic.
+        Silently drops chunks when mic is paused (Stop & Analyze mode).
+        """
+        if self.mic_paused:
+            return    # silently discard while user reviews analysis
         await self._send({"event": {"audioInput": {
             "promptName":  self.prompt_name,
             "contentName": self.audio_in,
@@ -190,24 +201,27 @@ class SonicSession:
 
     async def receive_and_forward(self):
         """
-        Receive events from Nova Sonic and forward them to the browser WebSocket.
-        Sends two message types to frontend:
-          { type: 'audio', data: '<base64 PCM>' }   → play through speakers
-          { type: 'transcript', role: '...', text: '...' }  → show in UI
+        Receive events from Nova Sonic output stream and forward to browser.
+ 
+        Message types sent to browser:
+          { type: 'audio',      data: '<base64 PCM>' }
+          { type: 'transcript', role: str, text: str }
+          { type: 'done' }
+          { type: 'error',      message: str }
         """
         try:
             while self.is_active:
                 try:
                     output = await self.stream.await_output()
                     result = await output[1].receive()
-
+ 
                     if not (result.value and result.value.bytes_):
                         continue
-
+ 
                     decoded    = json.loads(result.value.bytes_.decode("utf-8"))
                     event_data = decoded.get("event", {})
-
-                    # ── Audio output → forward to browser ──────────────────
+ 
+                    # Audio output → forward raw base64 PCM to browser
                     if "audioOutput" in event_data:
                         b64 = event_data["audioOutput"].get("content", "")
                         if b64:
@@ -215,26 +229,27 @@ class SonicSession:
                                 "type": "audio",
                                 "data": b64
                             }))
-
-                    # ── Transcript → forward to browser ────────────────────
+ 
+                    # Transcript → forward to browser for display
                     if "textOutput" in event_data:
                         text = event_data["textOutput"].get("content", "").strip()
                         role = event_data["textOutput"].get("role", "")
                         if text:
+                            print(f"[sonic] {'USER' if role == 'USER' else 'ECHO'}: {text[:80]}")
                             await self.ws.send_text(json.dumps({
                                 "type": "transcript",
                                 "role": role,
                                 "text": text
                             }))
-
-                    # ── Session complete marker ─────────────────────────────
+ 
+                    # Turn complete marker
                     if "completionEnd" in event_data:
                         await self.ws.send_text(json.dumps({"type": "done"}))
-
+ 
                 except Exception as inner:
                     err = str(inner)
                     if "timed out" in err.lower():
-                        continue
+                        continue    # normal keepalive — ignore
                     if self.is_active:
                         print(f"[receive_err] {type(inner).__name__}: {inner}")
                         await self.ws.send_text(json.dumps({
@@ -242,11 +257,12 @@ class SonicSession:
                             "message": str(inner)
                         }))
                     break
-
+ 
         except Exception as e:
             print(f"[stream_err] {type(e).__name__}: {e}")
         finally:
             self.is_active = False
+            print("[sonic] receive_and_forward exited")
 
     async def _send(self, payload: dict):
         raw   = json.dumps(payload).encode("utf-8")
@@ -322,7 +338,12 @@ async def voice_websocket(websocket: WebSocket):
 # ── Health check ──────────────────────────────────────────────────────────────
 @app.get("/health")
 async def health():
-    return {"status": "ok", "service": "Echo Legal AI", "model": MODEL_ID}
+    return {
+        "status":       "ok",
+        "service":      "Echo Legal AI",
+        "model":        MODEL_ID,
+        "sonic_region": REGION,
+    }
 
 
 # ── Run ───────────────────────────────────────────────────────────────────────
