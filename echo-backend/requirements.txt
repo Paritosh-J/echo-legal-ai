@@ -1,16 +1,171 @@
-fastapi
-uvicorn
-websockets
-boto3
-python-dotenv
-strands-agents
-nova-act
-pymupdf`
-pillow
-python-multipart
-aiofiles
-aws-sdk-bedrock-runtime
-pyaudio
-sounddevice
-numpy
-smithy-aws-core
+# ============================================================
+# Echo Legal AI — Python Dependencies
+# Amazon Nova AI Hackathon
+# ============================================================
+
+# Version Compatibility Matrix for Echo Legal AI
+# Python Version      Status           Notes
+# ==============      ======           =====
+# 3.11.x         ✅ Recommended  Everything works, all wheels available
+# 3.12.x         ✅ Good         Works well, minor numpy compile issues on Windows
+# 3.13.x         ⚠️ Caution      Some Smithy SDK import quirks reported
+# 3.14.x         ⚠️ Caution      PyAudio broken, numpy no wheel, requires workarounds
+# 3.10.x         ✅ Works        Slightly older but fully compatible\
+# 3.9.x or below ❌ Avoid        match statements and newer type hints will break
+
+# Install with:
+#   pip install -r requirements.txt
+#
+# ⚠️  Python 3.14 users — run these TWO commands FIRST:
+#   pip install numpy --only-binary=:all: --pre
+#   pip install sounddevice
+#
+# Then install the rest:
+#   pip install -r requirements.txt
+#
+# ⚠️  Nova Sonic SDK may need separate install if conflicts:
+#   pip install aws-sdk-bedrock-runtime --no-deps
+# ============================================================
+
+# smithy_json>=0.2.1
+# awscrt>=0.31.3
+# strands
+
+# ── Web Framework ─────────────────────────────────────────
+fastapi>=0.110.0
+uvicorn[standard]>=0.29.0
+python-multipart>=0.0.9
+websockets>=12.0
+aiofiles>=23.2.1
+
+
+# ── AWS SDK (Core) ────────────────────────────────────────
+boto3>=1.34.0
+botocore>=1.34.0
+
+
+# ── Amazon Nova Sonic — Bidirectional Streaming SDK ───────
+# Real-time speech-to-speech via bidirectional WebSocket stream
+# Calls us-east-1 endpoint regardless of default region
+aws-sdk-bedrock-runtime>=0.3.0
+smithy-core>=0.1.0
+smithy-aws-core>=0.1.0
+smithy-http>=0.1.0
+
+
+# ── Strands Agents SDK ────────────────────────────────────
+# Multi-agent orchestration for legal reasoning pipeline
+# Powers: Classifier + Eligibility + Drafter + Orchestrator agents
+strands-agents>=0.1.0
+strands-agents-tools>=0.1.0
+
+
+# ── Nova Act — Browser Automation ─────────────────────────
+# Autonomous legal aid intake and form filing
+# Requires: NOVA_ACT_API_KEY set in .env
+# Requires: Google Chrome installed on system
+nova-act>=3.0.0
+bedrock-agentcore>=1.2.0
+fire>=0.7.0
+install-playwright>=0.1.0
+
+
+# ── Vector Database — OpenSearch Serverless ───────────────
+# Stores and retrieves document embeddings for RAG
+opensearch-py>=2.4.0
+requests-aws4auth>=1.3.1
+
+
+# ── Document Processing ───────────────────────────────────
+PyMuPDF>=1.24.0          # PDF text extraction (import as fitz)
+Pillow>=10.3.0           # Image resizing and format conversion
+
+
+# ── Audio — Python 3.14 Compatible ───────────────────────
+# sounddevice is used instead of PyAudio
+# PyAudio requires MSVC C++ Build Tools and has no Python 3.14 wheel
+sounddevice>=0.4.6
+numpy>=1.26.0            # Audio array processing
+
+
+# ── Environment & Configuration ───────────────────────────
+python-dotenv>=1.0.1
+pydantic>=2.6.0
+pydantic-settings>=2.2.0
+
+
+# ── HTTP Clients ──────────────────────────────────────────
+httpx>=0.27.0            # Async HTTP (agent tool calls, health checks)
+requests>=2.31.0         # Sync HTTP (Nova Act internals, utilities)
+
+
+# ── Async Utilities ───────────────────────────────────────
+anyio>=4.3.0             # Async compatibility (FastAPI + Strands)
+asyncio-throttle>=1.0.2  # Rate limiting for Bedrock API calls
+
+
+# ── Serialization & Typing ────────────────────────────────
+typing-extensions>=4.10.0
+
+
+# ── Security ──────────────────────────────────────────────
+cryptography>=42.0.0     # Required by Nova Act and Bedrock SDKs
+
+
+# ── Dev / Testing ─────────────────────────────────────────
+pytest>=8.1.0
+pytest-asyncio>=0.23.0
+
+
+# ── Optional: AWS Type Stubs (IDE autocomplete) ───────────
+# Comment out if install causes conflicts
+boto3-stubs>=1.34.0
+mypy-boto3-s3>=1.34.0
+
+
+# ============================================================
+# NOTES ON KNOWN ISSUES
+# ============================================================
+#
+# 1. numpy on Python 3.14
+#    pip may try to compile numpy from source and fail without
+#    MSVC C++ Build Tools. Fix:
+#      pip install numpy --only-binary=:all: --pre
+#
+# 2. PyAudio (DO NOT USE on Python 3.14)
+#    No pre-built wheel exists for Python 3.14.
+#    Use sounddevice instead — it is already listed above.
+#
+# 3. aws-sdk-bedrock-runtime conflicts with nova-act numpy pin
+#    If nova-act tries to downgrade numpy and fails, install with:
+#      pip install nova-act --no-deps
+#      pip install fire install-playwright bedrock-agentcore Deprecated
+#
+# 4. strands-agents[bidi] pulls in PyAudio via BidiAudioIO
+#    Do NOT install the [bidi] extra — use plain strands-agents
+#    and the custom echo_sonic.py voice engine instead.
+#
+# 5. OpenSearch policies require 30s propagation after creation
+#    Run setup_opensearch.py once after creating the collection.
+#    The script handles the wait automatically.
+#
+# ============================================================
+# REGION CONFIGURATION (India / APAC users)
+# ============================================================
+#
+# Set these in your .env file:
+#
+#   AWS_DEFAULT_REGION=ap-south-1
+#   NOVA_LITE_MODEL_ID=apac.amazon.nova-lite-v1:0
+#   NOVA_EMBEDDINGS_MODEL_ID=amazon.titan-embed-text-v2:0
+#   EMBEDDINGS_REGION=ap-south-1
+#   NOVA_SONIC_MODEL_ID=amazon.nova-2-sonic-v1:0
+#   NOVA_SONIC_REGION=us-east-1    ← Sonic must use us-east-1
+#
+# US users:
+#   AWS_DEFAULT_REGION=us-east-1
+#   NOVA_LITE_MODEL_ID=us.amazon.nova-2-lite-v1:0
+#   NOVA_EMBEDDINGS_MODEL_ID=amazon.nova-2-multimodal-embeddings-v1:0
+#   NOVA_SONIC_MODEL_ID=amazon.nova-2-sonic-v1:0
+#
+# ============================================================
