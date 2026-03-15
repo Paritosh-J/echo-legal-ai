@@ -71,15 +71,6 @@ No lawyer needed. No complex forms. No barriers.
 - **Plain-language summaries** of complex lease agreements and legal contracts
 - **1024-dimension embeddings** stored in Amazon OpenSearch Serverless for fast retrieval
 
-### 🤖 Autonomous Form Filing (Nova Act)
-- **One-click legal intake** — Echo navigates LegalAid.org and fills your intake form automatically
-- **Court e-filing support** — uploads documents to court portals on your behalf
-- **Government benefits applications** — automates Benefits.gov and similar portals
-- **Live browser feed** — watch every Nova Act step in a real-time screenshot panel
-- **Voice confirmation** — Echo reads back the filled form before submitting
-- **Full audit trail** — every automated action logged to DynamoDB for compliance and user review
-- **Retry logic** — if a form fails, Echo explains the issue and asks for missing information by voice
-
 ### 🌐 Frontend & Accessibility
 - **Animated voice orb** — pulsing visual feedback shows listening, thinking, and speaking states
 - **Mobile-first responsive design** — optimized for users who are smartphone-only
